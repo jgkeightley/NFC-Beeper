@@ -3,116 +3,258 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NFC Beep Reader</title>
+    <title>Transit Terminal Reader</title>
     <style>
         body {
             margin: 0;
             padding: 0;
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            background-color: #121212;
-            font-family: system-ui, -apple-system, sans-serif;
+            background-color: #1a1a1a;
+            font-family: sans-serif;
             overflow: hidden;
             touch-action: manipulation;
         }
 
-        #beep-btn {
-            position: relative;
-            width: 260px;
-            height: 260px;
-            border-radius: 50%;
-            border: none;
-            background: radial-gradient(circle at 30% 30%, #ff4d4d, #c00000);
+        /* The main physical terminal box */
+        .terminal-casing {
+            background: linear-gradient(135deg, #3a3a3a, #222);
+            border-radius: 20px;
+            padding: 30px;
+            width: 320px;
             box-shadow: 
-                0 15px 0 #800000, 
-                0 15px 25px rgba(0,0,0,0.6),
-                inset 0 5px 15px rgba(255,255,255,0.4);
-            color: rgba(255, 255, 255, 0.95);
-            font-size: 3rem;
-            font-weight: 800;
-            text-transform: uppercase;
-            cursor: pointer;
-            transition: transform 0.08s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.08s, filter 0.3s; 
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-            outline: none;
-            letter-spacing: 2px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.4);
+                0 20px 50px rgba(0,0,0,0.8),
+                inset 0 2px 5px rgba(255,255,255,0.1),
+                inset 0 -5px 15px rgba(0,0,0,0.5);
+            border: 2px solid #444;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 25px;
+            position: relative;
+        }
+
+        /* LED Indicator Lights */
+        .led-panel {
+            display: flex;
+            gap: 20px;
+            padding: 10px;
+            background-color: #111;
+            border-radius: 30px;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+        }
+
+        .led {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background-color: #333; /* Default off state */
+            box-shadow: 
+                inset 0 2px 5px rgba(0,0,0,0.6),
+                0 1px 1px rgba(255,255,255,0.1);
+            transition: all 0.1s ease;
+        }
+
+        .led.red.on {
+            background-color: #ff3333;
+            box-shadow: 0 0 15px #ff3333, inset 0 2px 5px rgba(255,255,255,0.4);
+        }
+
+        .led.yellow.on {
+            background-color: #ffcc00;
+            box-shadow: 0 0 15px #ffcc00, inset 0 2px 5px rgba(255,255,255,0.4);
+        }
+
+        .led.green.on {
+            background-color: #33ff33;
+            box-shadow: 0 0 15px #33ff33, inset 0 2px 5px rgba(255,255,255,0.4);
+        }
+
+        /* 8-Bit Retro LCD Screen */
+        .lcd-bezel {
+            background-color: #111;
+            padding: 15px;
+            border-radius: 10px;
+            width: 100%;
+            box-sizing: border-box;
+            box-shadow: inset 0 5px 15px rgba(0,0,0,0.8);
+        }
+
+        .lcd-screen {
+            background-color: #8ea604; /* Classic LCD green/yellow */
+            height: 80px;
+            border-radius: 4px;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.4);
             display: flex;
             justify-content: center;
             align-items: center;
-            z-index: 2;
+            padding: 10px;
+            position: relative;
+            overflow: hidden;
         }
 
-        /* Active state (when pressed manually) */
-        #beep-btn:active, #beep-btn.pressed {
-            transform: translateY(12px);
-            box-shadow: 
-                0 3px 0 #800000, 
-                0 3px 10px rgba(0,0,0,0.5),
-                inset 0 5px 20px rgba(0,0,0,0.3);
-            background: radial-gradient(circle at 30% 30%, #ff3333, #a00000);
-        }
-
-        /* Scanning state (NFC active) */
-        #beep-btn.scanning {
-            filter: drop-shadow(0 0 20px rgba(255, 77, 77, 0.6));
-            animation: pulse-glow 2s infinite alternate;
-        }
-
-        @keyframes pulse-glow {
-            from { filter: drop-shadow(0 0 10px rgba(255, 77, 77, 0.4)); }
-            to { filter: drop-shadow(0 0 35px rgba(255, 77, 77, 0.9)); }
-        }
-
-        #status-text {
-            color: #888;
-            margin-top: 40px;
+        /* LCD text styling */
+        #lcd-text {
+            font-family: 'Courier New', Courier, monospace;
             font-size: 1.1rem;
+            font-weight: bold;
+            color: #2e3309; /* Dark green/black text */
             text-align: center;
-            max-width: 80%;
-            height: 2.5em;
-        }
-
-        .success-text { color: #4CAF50 !important; }
-        .error-text { color: #ff5252 !important; }
-
-        /* Success flash effect */
-        @keyframes flash {
-            0% { background-color: rgba(255, 255, 255, 0); }
-            50% { background-color: rgba(255, 255, 255, 0.15); }
-            100% { background-color: rgba(255, 255, 255, 0); }
-        }
-
-        .flash-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
+            text-transform: uppercase;
+            line-height: 1.4;
+            letter-spacing: 1px;
+            text-shadow: 1px 1px 0px rgba(142, 166, 4, 0.5); /* Slight bleed effect */
             width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 10;
         }
+
+        /* Simulated LCD scanlines */
+        .lcd-screen::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.05),
+                rgba(0, 0, 0, 0.05) 2px,
+                transparent 2px,
+                transparent 4px
+            );
+            pointer-events: none;
+        }
+
+        /* The Scan Pad Area */
+        .scan-pad-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .scan-pad {
+            width: 180px;
+            height: 180px;
+            background: #2a2a2a;
+            border-radius: 20px;
+            border: 2px solid #555;
+            box-shadow: 
+                inset 0 0 20px rgba(0,0,0,0.5),
+                0 5px 10px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .scan-pad:active {
+            transform: scale(0.97);
+            background: #222;
+        }
+
+        /* JS Logo */
+        .js-logo {
+            font-family: 'Arial Black', Impact, sans-serif;
+            font-size: 4rem;
+            font-style: italic;
+            color: #444;
+            letter-spacing: -2px;
+            transform: skewX(-10deg);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            transition: all 0.3s;
+        }
+
+        .scan-pad.active .js-logo {
+            color: #666;
+            filter: drop-shadow(0 0 8px rgba(0, 155, 72, 0.6));
+        }
+
+        .pad-label {
+            margin-top: 15px;
+            color: #555;
+            font-size: 0.9rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
     </style>
 </head>
 <body>
 
-    <button id="beep-btn">BEEP</button>
-    <p id="status-text">Press button to enable NFC scanner</p>
-    
-    <div id="flash-overlay" class="flash-overlay"></div>
+    <div class="terminal-casing">
+        
+        <!-- Top Status LEDs -->
+        <div class="led-panel">
+            <div class="led red" id="led-red"></div>
+            <div class="led yellow" id="led-yellow"></div>
+            <div class="led green" id="led-green"></div>
+        </div>
+
+        <!-- Middle LCD Screen -->
+        <div class="lcd-bezel">
+            <div class="lcd-screen">
+                <div id="lcd-text">SYSTEM STANDBY<br>TAP PAD TO WAKE</div>
+            </div>
+        </div>
+
+        <!-- Bottom Scan Pad -->
+        <div class="scan-pad-container">
+            <div class="scan-pad" id="scan-pad">
+                <!-- JS Logo -->
+                <div class="js-logo">JS</div>
+            </div>
+            <div class="pad-label">Scan Area</div>
+        </div>
+
+    </div>
 
     <script>
-        const btn = document.getElementById('beep-btn');
-        const flashOverlay = document.getElementById('flash-overlay');
-        const statusText = document.getElementById('status-text');
+        // DOM Elements
+        const scanPad = document.getElementById('scan-pad');
+        const lcdText = document.getElementById('lcd-text');
+        const ledRed = document.getElementById('led-red');
+        const ledYellow = document.getElementById('led-yellow');
+        const ledGreen = document.getElementById('led-green');
+        
         let audioCtx = null;
         let nfcScannerActive = false;
+        let resetTimeout = null;
+
+        // --- Helper Functions for UI ---
+
+        function updateLCD(text) {
+            lcdText.innerHTML = text;
+        }
+
+        function flashLED(ledElement, durationMs) {
+            ledElement.classList.add('on');
+            setTimeout(() => {
+                ledElement.classList.remove('on');
+            }, durationMs);
+        }
+
+        function resetTerminalReady() {
+            updateLCD("READY<br>PRESENT CARD");
+            ledGreen.classList.remove('on');
+            ledRed.classList.remove('on');
+            ledYellow.classList.remove('on');
+        }
+
+        function scheduleReset(delay) {
+            if (resetTimeout) clearTimeout(resetTimeout);
+            resetTimeout = setTimeout(() => {
+                if (nfcScannerActive) {
+                    resetTerminalReady();
+                }
+            }, delay);
+        }
 
         // --- Audio System ---
+
         function initAudio() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -122,103 +264,142 @@
             }
         }
 
-        function playNfcBeep() {
+        function playBeep(type = 'success') {
             initAudio();
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
 
-            oscillator.type = 'sine'; 
-            oscillator.frequency.setValueAtTime(2500, audioCtx.currentTime); 
-            
-            const now = audioCtx.currentTime;
-            gainNode.gain.setValueAtTime(0, now);
-            gainNode.gain.linearRampToValueAtTime(0.6, now + 0.005);
-            gainNode.gain.setValueAtTime(0.6, now + 0.08);
-            gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+            if (type === 'success') {
+                // High-pitched short chirp for success
+                oscillator.type = 'sine'; 
+                oscillator.frequency.setValueAtTime(2500, audioCtx.currentTime); 
+                
+                const now = audioCtx.currentTime;
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.6, now + 0.005);
+                gainNode.gain.setValueAtTime(0.6, now + 0.08);
+                gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
 
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            oscillator.start(now);
-            oscillator.stop(now + 0.11);
-        }
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start(now);
+                oscillator.stop(now + 0.11);
+            } 
+            else if (type === 'error') {
+                // Low-pitched double buzz for error
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+                
+                const now = audioCtx.currentTime;
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.5, now + 0.01);
+                gainNode.gain.setValueAtTime(0.5, now + 0.15);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.16);
+                
+                // Second buzz
+                gainNode.gain.linearRampToValueAtTime(0.5, now + 0.2);
+                gainNode.gain.setValueAtTime(0.5, now + 0.35);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.36);
 
-        function triggerVisuals() {
-            flashOverlay.style.animation = 'none';
-            flashOverlay.offsetHeight; 
-            flashOverlay.style.animation = 'flash 0.15s ease-out';
-            
-            if (navigator.vibrate) {
-                navigator.vibrate(50);
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start(now);
+                oscillator.stop(now + 0.37);
             }
-        }
-
-        function successAction() {
-            playNfcBeep();
-            triggerVisuals();
-            
-            btn.classList.add('pressed');
-            setTimeout(() => btn.classList.remove('pressed'), 150);
         }
 
         // --- NFC System ---
+
+        function handleSuccess(serialNumber) {
+            playBeep('success');
+            if (navigator.vibrate) navigator.vibrate(50);
+            
+            flashLED(ledGreen, 1500);
+            
+            // Format serial nicely if it exists
+            const displayId = serialNumber ? serialNumber.replace(/:/g, '') : 'UNKNOWN';
+            updateLCD(`ACCEPTED<br>ID: ${displayId}`);
+            
+            scheduleReset(2000);
+        }
+
+        function handleError(msg) {
+            playBeep('error');
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            
+            flashLED(ledRed, 2000);
+            updateLCD(`SCAN ERROR<br>${msg}`);
+            
+            scheduleReset(2500);
+        }
+
         async function startNFC() {
             if (!("NDEFReader" in window)) {
-                statusText.textContent = "NFC is not supported on this browser/device.";
-                statusText.className = "error-text";
+                updateLCD("HW ERROR<br>NO NFC MODULE");
+                flashLED(ledRed, 3000);
                 return;
             }
 
+            updateLCD("INITIALIZING<br>SCANNER...");
+
             try {
                 const ndef = new NDEFReader();
-                await ndef.scan(); 
+                await ndef.scan(); // Prompts user for browser permission
                 
                 nfcScannerActive = true;
-                btn.classList.add('scanning');
-                statusText.innerHTML = "Scanner Active.<br>Tap an NFC card to the back of your phone.";
-                statusText.className = "success-text";
+                scanPad.classList.add('active'); // Lights up the NFC icon
+                
+                // Beep and green flash to indicate successful startup
+                playBeep('success');
+                flashLED(ledGreen, 500);
+                resetTerminalReady();
 
                 ndef.addEventListener("reading", ({ message, serialNumber }) => {
-                    successAction();
-                    statusText.innerHTML = `Card Read Successfully!<br>ID: ${serialNumber || 'Hidden'}`;
-                    
-                    setTimeout(() => {
-                        if (nfcScannerActive) {
-                            statusText.innerHTML = "Scanner Active.<br>Tap an NFC card to the back of your phone.";
-                        }
-                    }, 2000);
+                    handleSuccess(serialNumber);
                 });
 
                 ndef.addEventListener("readingerror", () => {
-                    statusText.textContent = "Read error. Try tapping again.";
-                    statusText.className = "error-text";
-                    if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+                    handleError("TRY AGAIN");
                 });
 
             } catch (error) {
                 console.error("NFC Error:", error);
-                statusText.textContent = `NFC Error: ${error.message}`;
-                statusText.className = "error-text";
+                
+                if (error.name === 'NotAllowedError') {
+                    handleError("PERMISSION<br>DENIED");
+                } else {
+                    handleError("SYS FAILURE");
+                }
             }
         }
 
-        // --- User Interaction ---
-        function handleInteraction(e) {
-            if (e.type === 'touchstart') {
-                e.preventDefault();
-            }
-            
-            successAction();
-            
-            if (!nfcScannerActive) {
-                statusText.textContent = "Requesting NFC permissions...";
-                startNFC();
-            }
-        }
-
-        btn.addEventListener('mousedown', handleInteraction);
-        btn.addEventListener('touchstart', handleInteraction, { passive: false });
+        // --- User Interaction (Waking the terminal) ---
         
+        scanPad.addEventListener('mousedown', (e) => {
+            // Prevent default zooming/scrolling on touch
+            if (e.type === 'touchstart') e.preventDefault();
+            
+            // Only trigger the startup sequence once
+            if (!nfcScannerActive) {
+                initAudio(); // Required by browsers to happen on user interaction
+                startNFC();
+            } else {
+                // If already active, manual click just triggers a test success
+                handleSuccess('TEST-MANUAL');
+            }
+        });
+
+        // Handle mobile touch separately for better responsiveness
+        scanPad.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (!nfcScannerActive) {
+                initAudio();
+                startNFC();
+            } else {
+                handleSuccess('TEST-MANUAL');
+            }
+        }, { passive: false });
+
     </script>
 </body>
 </html>
-
