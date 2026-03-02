@@ -4,17 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Transit Terminal Reader</title>
+    <!-- Include HTML5-QRCode Library -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
         body {
             margin: 0;
-            padding: 0;
+            padding: 20px 0;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
             background-color: #1a1a1a;
             font-family: sans-serif;
-            overflow: hidden;
             touch-action: manipulation;
         }
 
@@ -40,7 +41,7 @@
         .led-panel {
             display: flex;
             gap: 20px;
-            padding: 10px;
+            padding: 10px 20px;
             background-color: #111;
             border-radius: 30px;
             box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
@@ -50,7 +51,7 @@
             width: 24px;
             height: 24px;
             border-radius: 50%;
-            background-color: #333; /* Default off state */
+            background-color: #333; 
             box-shadow: 
                 inset 0 2px 5px rgba(0,0,0,0.6),
                 0 1px 1px rgba(255,255,255,0.1);
@@ -63,6 +64,556 @@
         }
 
         .led.yellow.on {
+            background-color: #ffcc00;
+            box-shadow: 0 0 15px #ffcc00, inset 0 2px 5px rgba(255,255,255,0.4);
+        }
+
+        .led.green.on {
+            background-color: #33ff33;
+            box-shadow: 0 0 15px #33ff33, inset 0 2px 5px rgba(255,255,255,0.4);
+        }
+
+        /* 8-Bit Retro LCD Screen */
+        .lcd-bezel {
+            background-color: #111;
+            padding: 15px;
+            border-radius: 10px;
+            width: 100%;
+            box-sizing: border-box;
+            box-shadow: inset 0 5px 15px rgba(0,0,0,0.8);
+        }
+
+        .lcd-screen {
+            background-color: #8ea604; 
+            height: 80px;
+            border-radius: 4px;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.4);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #lcd-text {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #2e3309;
+            text-align: center;
+            text-transform: uppercase;
+            line-height: 1.4;
+            letter-spacing: 1px;
+            text-shadow: 1px 1px 0px rgba(142, 166, 4, 0.5);
+            width: 100%;
+            word-wrap: break-word;
+        }
+
+        .lcd-screen::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.05),
+                rgba(0, 0, 0, 0.05) 2px,
+                transparent 2px,
+                transparent 4px
+            );
+            pointer-events: none;
+        }
+
+        /* Component Containers */
+        .component-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pad-label {
+            color: #777;
+            font-size: 0.85rem;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        /* NFC Scan Pad */
+        .scan-pad {
+            width: 180px;
+            height: 180px;
+            background: #2a2a2a;
+            border-radius: 20px;
+            border: 2px solid #555;
+            box-shadow: 
+                inset 0 0 20px rgba(0,0,0,0.5),
+                0 5px 10px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .scan-pad:active {
+            transform: scale(0.97);
+            background: #222;
+        }
+
+        /* JS Logo */
+        .js-logo {
+            font-family: 'Arial Black', Impact, sans-serif;
+            font-size: 4rem;
+            font-style: italic;
+            color: #444;
+            letter-spacing: -2px;
+            transform: skewX(-10deg);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            transition: all 0.3s;
+        }
+
+        .scan-pad.active .js-logo {
+            color: #666;
+            filter: drop-shadow(0 0 8px rgba(0, 155, 72, 0.6));
+        }
+
+        /* Divider */
+        .hardware-divider {
+            width: 80%;
+            height: 2px;
+            background: #222;
+            border-bottom: 1px solid #444;
+            margin: 5px 0;
+        }
+
+        /* Barcode Scanner Area */
+        .barcode-window {
+            width: 260px;
+            height: 140px;
+            background: #111;
+            border-radius: 12px;
+            border: 2px solid #444;
+            box-shadow: inset 0 5px 15px rgba(0,0,0,0.8);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .barcode-btn {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(42, 42, 42, 0.9);
+            color: #888;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            font-size: 1rem;
+            border: none;
+            cursor: pointer;
+            z-index: 10;
+            transition: background 0.2s, color 0.2s;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            line-height: 1.5;
+        }
+
+        .barcode-btn:hover { background: rgba(51, 51, 51, 0.9); color: #aaa; }
+        .barcode-btn:active { background: rgba(34, 34, 34, 0.9); }
+
+        #reader {
+            width: 100%;
+            height: 100%;
+            display: none; 
+        }
+        
+        #reader video {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+        }
+        
+        #reader__dashboard_section_csr, #reader__dashboard_section_swaplink {
+            display: none !important;
+        }
+
+        /* Elegant Hardware Stop Button */
+        .stop-barcode-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 36px;
+            height: 36px;
+            background: rgba(30, 30, 30, 0.6);
+            backdrop-filter: blur(4px); /* Glass effect */
+            -webkit-backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 50%; /* Perfect circle */
+            color: #ccc;
+            cursor: pointer;
+            z-index: 20;
+            display: none; /* Hidden until camera is active */
+            justify-content: center;
+            align-items: center;
+            box-shadow: 
+                0 4px 10px rgba(0,0,0,0.5), 
+                inset 0 1px 1px rgba(255,255,255,0.2);
+            transition: all 0.2s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* Minimalist SVG Icon */
+        .stop-barcode-btn svg {
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .stop-barcode-btn:hover {
+            background: rgba(50, 50, 50, 0.8);
+            color: #fff;
+        }
+
+        .stop-barcode-btn:active {
+            background: rgba(120, 0, 0, 0.8);
+            color: #fff;
+            transform: scale(0.92);
+            border-color: rgba(255, 100, 100, 0.3);
+            box-shadow: 
+                0 0 15px rgba(255, 0, 0, 0.3), 
+                inset 0 2px 8px rgba(0,0,0,0.6);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="terminal-casing">
+        
+        <!-- Top Status LEDs -->
+        <div class="led-panel">
+            <div class="led red" id="led-red"></div>
+            <div class="led yellow" id="led-yellow"></div>
+            <div class="led green" id="led-green"></div>
+        </div>
+
+        <!-- Middle LCD Screen -->
+        <div class="lcd-bezel">
+            <div class="lcd-screen">
+                <div id="lcd-text">SYSTEM STANDBY<br>AWAITING INPUT</div>
+            </div>
+        </div>
+
+        <!-- Middle NFC Pad -->
+        <div class="component-container">
+            <div class="pad-label">NFC Sensor</div>
+            <div class="scan-pad" id="scan-pad">
+                <div class="js-logo">JS</div>
+            </div>
+        </div>
+
+        <div class="hardware-divider"></div>
+
+        <!-- Bottom Barcode Scanner -->
+        <div class="component-container">
+            <div class="pad-label">Barcode Scanner</div>
+            <div class="barcode-window">
+                <button id="btn-start-barcode" class="barcode-btn">
+                    <span>[ OPTICAL ]</span>
+                    <span>TAP TO WAKE</span>
+                </button>
+                <div id="reader"></div>
+                
+                <!-- Elegant Stop Camera Button -->
+                <button id="btn-stop-barcode" class="stop-barcode-btn" aria-label="Power Down Optical">
+                    <svg viewBox="0 0 24 24">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // DOM Elements
+        const scanPad = document.getElementById('scan-pad');
+        const btnBarcode = document.getElementById('btn-start-barcode');
+        const btnStopBarcode = document.getElementById('btn-stop-barcode');
+        const readerDiv = document.getElementById('reader');
+        const lcdText = document.getElementById('lcd-text');
+        const ledRed = document.getElementById('led-red');
+        const ledYellow = document.getElementById('led-yellow');
+        const ledGreen = document.getElementById('led-green');
+        
+        let audioCtx = null;
+        let nfcScannerActive = false;
+        let barcodeScannerActive = false;
+        let resetTimeout = null;
+        let html5QrCode = null;
+
+        // --- Hardware UI Functions ---
+
+        function updateLCD(text) {
+            lcdText.innerHTML = text;
+        }
+
+        function flashLED(ledElement, durationMs) {
+            ledElement.classList.add('on');
+            setTimeout(() => {
+                ledElement.classList.remove('on');
+            }, durationMs);
+        }
+
+        function resetTerminalReady() {
+            let modeText = [];
+            if (nfcScannerActive) modeText.push("NFC");
+            if (barcodeScannerActive) modeText.push("OPTICAL");
+            
+            if (modeText.length > 0) {
+                updateLCD(`READY [${modeText.join('/')}]<br>PRESENT MEDIA`);
+            } else {
+                updateLCD("SYSTEM STANDBY<br>AWAITING INPUT");
+            }
+            
+            ledGreen.classList.remove('on');
+            ledRed.classList.remove('on');
+            ledYellow.classList.remove('on');
+        }
+
+        function scheduleReset(delay) {
+            if (resetTimeout) clearTimeout(resetTimeout);
+            resetTimeout = setTimeout(() => {
+                resetTerminalReady();
+            }, delay);
+        }
+
+        // --- Audio Engine ---
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playBeep(type = 'success') {
+            initAudio();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            if (type === 'success') {
+                oscillator.type = 'sine'; 
+                oscillator.frequency.setValueAtTime(2500, audioCtx.currentTime); 
+                
+                const now = audioCtx.currentTime;
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.6, now + 0.005);
+                gainNode.gain.setValueAtTime(0.6, now + 0.08);
+                gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start(now);
+                oscillator.stop(now + 0.11);
+            } 
+            else if (type === 'error') {
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(150, audioCtx.currentTime);
+                
+                const now = audioCtx.currentTime;
+                gainNode.gain.setValueAtTime(0, now);
+                gainNode.gain.linearRampToValueAtTime(0.5, now + 0.01);
+                gainNode.gain.setValueAtTime(0.5, now + 0.15);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.16);
+                
+                gainNode.gain.linearRampToValueAtTime(0.5, now + 0.2);
+                gainNode.gain.setValueAtTime(0.5, now + 0.35);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.36);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start(now);
+                oscillator.stop(now + 0.37);
+            }
+        }
+
+        // --- Universal Handlers ---
+
+        function handleSuccess(data, type) {
+            playBeep('success');
+            if (navigator.vibrate) navigator.vibrate(50);
+            flashLED(ledGreen, 1500);
+            
+            let displayId = data ? data.replace(/:/g, '') : 'UNKNOWN';
+            if (displayId.length > 14) {
+                displayId = displayId.substring(0, 11) + '...';
+            }
+            
+            updateLCD(`ACCEPTED [${type}]<br>${displayId}`);
+            scheduleReset(2500);
+        }
+
+        function handleError(msg) {
+            playBeep('error');
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+            flashLED(ledRed, 2000);
+            updateLCD(`SCAN ERROR<br>${msg}`);
+            scheduleReset(3000);
+        }
+
+        // --- NFC Module ---
+
+        async function startNFC() {
+            if (!("NDEFReader" in window)) {
+                handleError("NO NFC CHIP<br>DETECTED");
+                return;
+            }
+            updateLCD("INIT NFC...<br>PLEASE WAIT");
+            try {
+                const ndef = new NDEFReader();
+                await ndef.scan(); 
+                
+                nfcScannerActive = true;
+                scanPad.classList.add('active'); 
+                
+                playBeep('success');
+                flashLED(ledGreen, 300);
+                resetTerminalReady();
+
+                ndef.addEventListener("reading", ({ serialNumber }) => {
+                    handleSuccess(serialNumber, 'NFC');
+                });
+                ndef.addEventListener("readingerror", () => {
+                    handleError("BAD NFC READ");
+                });
+            } catch (error) {
+                if (error.name === 'NotAllowedError') {
+                    handleError("NFC PERMISSION<br>DENIED");
+                } else {
+                    handleError("NFC SYS FAIL");
+                }
+            }
+        }
+
+        // --- Optical/Barcode Module ---
+
+        function startBarcodeScanner() {
+            updateLCD("INIT CAMERA...<br>PLEASE WAIT");
+            btnBarcode.style.display = 'none';
+            readerDiv.style.display = 'block';
+
+            html5QrCode = new Html5Qrcode("reader");
+
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                {
+                    fps: 10,
+                    qrbox: { width: 250, height: 130 } 
+                },
+                (decodedText) => {
+                    handleSuccess(decodedText, 'OPT');
+                    
+                    html5QrCode.pause(true);
+                    setTimeout(() => {
+                        if(html5QrCode.getState() === 2) { 
+                            html5QrCode.resume();
+                            resetTerminalReady();
+                        }
+                    }, 2500);
+                },
+                (errorMessage) => {
+                    // Ignore background scanning errors
+                }
+            ).then(() => {
+                barcodeScannerActive = true;
+                btnStopBarcode.style.display = 'flex'; // Show the stop button
+                playBeep('success');
+                flashLED(ledGreen, 300);
+                resetTerminalReady();
+            }).catch((err) => {
+                handleError("CAM SYS FAIL<br>OR DENIED");
+                resetBarcodeUI();
+            });
+        }
+
+        function stopBarcodeScanner() {
+            if (html5QrCode && barcodeScannerActive) {
+                updateLCD("POWERING DOWN<br>OPTICS...");
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                    resetBarcodeUI();
+                }).catch((err) => {
+                    // Force UI reset even if camera engine errors on stop
+                    resetBarcodeUI();
+                });
+            }
+        }
+
+        function resetBarcodeUI() {
+            barcodeScannerActive = false;
+            btnBarcode.style.display = 'flex';
+            readerDiv.style.display = 'none';
+            btnStopBarcode.style.display = 'none';
+            resetTerminalReady();
+        }
+
+        // --- Event Listeners ---
+        
+        // NFC Pad interaction
+        const handleNfcInteraction = (e) => {
+            if (e.type === 'touchstart') e.preventDefault();
+            initAudio();
+            if (!nfcScannerActive) {
+                startNFC();
+            } else {
+                handleSuccess('TEST-MANUAL', 'NFC');
+            }
+        };
+
+        scanPad.addEventListener('mousedown', handleNfcInteraction);
+        scanPad.addEventListener('touchstart', handleNfcInteraction, { passive: false });
+
+        // Barcode Start
+        const handleBarcodeStart = (e) => {
+            if (e.type === 'touchstart') e.preventDefault();
+            initAudio();
+            if (!barcodeScannerActive) {
+                startBarcodeScanner();
+            }
+        };
+
+        btnBarcode.addEventListener('mousedown', handleBarcodeStart);
+        btnBarcode.addEventListener('touchstart', handleBarcodeStart, { passive: false });
+
+        // Barcode Stop
+        const handleBarcodeStop = (e) => {
+            if (e.type === 'touchstart') e.preventDefault();
+            stopBarcodeScanner();
+        };
+        
+        btnStopBarcode.addEventListener('mousedown', handleBarcodeStop);
+        btnStopBarcode.addEventListener('touchstart', handleBarcodeStop, { passive: false });
+
+    </script>
+</body>
+</html>
+
+
             background-color: #ffcc00;
             box-shadow: 0 0 15px #ffcc00, inset 0 2px 5px rgba(255,255,255,0.4);
         }
