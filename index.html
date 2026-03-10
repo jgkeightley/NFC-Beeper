@@ -368,4 +368,312 @@
             if (profile === 'transit-success') {
                 osc.type = 'sine'; osc.frequency.setValueAtTime(2500, now);
                 gain.gain.setValueAtTime(0, now);
-             
+                gain.gain.linearRampToValueAtTime(0.6, now + 0.005);
+                gain.gain.setValueAtTime(0.6, now + 0.08);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.11);
+            } 
+            else if (profile === 'eftpos-success') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(1800, now);
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.5, now + 0.01);
+                gain.gain.setValueAtTime(0.5, now + 0.15);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.22);
+            }
+            else if (profile === 'error') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now);
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.5, now + 0.01);
+                gain.gain.setValueAtTime(0.5, now + 0.15);
+                gain.gain.linearRampToValueAtTime(0, now + 0.16);
+                gain.gain.linearRampToValueAtTime(0.5, now + 0.2);
+                gain.gain.setValueAtTime(0.5, now + 0.35);
+                gain.gain.linearRampToValueAtTime(0, now + 0.36);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.37);
+            }
+            else if (profile === 'keypad') {
+                osc.type = 'square'; osc.frequency.setValueAtTime(1000, now);
+                gain.gain.setValueAtTime(0, now);
+                gain.gain.linearRampToValueAtTime(0.05, now + 0.005);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                osc.start(now); osc.stop(now + 0.04);
+            }
+        }
+
+
+        // ==========================================
+        // EFTPOS STATE MACHINE & LOGIC
+        // ==========================================
+
+        function formatMoney(cents) {
+            return '$' + (cents / 100).toFixed(2);
+        }
+
+        function updateEftposScreen() {
+            if (currentDevice !== 'eftpos') return;
+
+            if (eftposState === 'IDLE') {
+                eftposDisplayAmount.innerText = formatMoney(eftposCents);
+                eftposDisplayStatus.innerText = "ENTER AMOUNT";
+                eftposCasing.classList.remove('scanning');
+            } else if (eftposState === 'SCANNING') {
+                eftposDisplayAmount.innerText = formatMoney(eftposCents);
+                eftposDisplayStatus.innerText = "TAP, INSERT OR SWIPE";
+                eftposCasing.classList.add('scanning');
+            }
+        }
+
+        function handleEftposKey(key) {
+            initAudio();
+            
+            // Block input if processing or displaying result
+            if (eftposState === 'PROCESSING' || eftposState === 'RESULT') return; 
+
+            if (key >= '0' && key <= '9') {
+                if (eftposState === 'SCANNING') return; // Block typing while scanner active
+                playBeep('keypad');
+                if (eftposCents < 1000000) { // Limit to $9,999.99 max
+                    eftposCents = (eftposCents * 10) + parseInt(key);
+                    updateEftposScreen();
+                }
+            } 
+            else if (key === 'CLEAR') {
+                if (eftposState === 'SCANNING') return;
+                playBeep('keypad');
+                eftposCents = Math.floor(eftposCents / 10);
+                updateEftposScreen();
+            } 
+            else if (key === 'CANCEL') {
+                playBeep('keypad');
+                eftposCents = 0;
+                eftposState = 'IDLE';
+                updateEftposScreen();
+            } 
+            else if (key === 'ENTER') {
+                if (eftposCents > 0 && eftposState === 'IDLE') {
+                    playBeep('keypad');
+                    eftposState = 'SCANNING';
+                    updateEftposScreen();
+                    startNFC(); // Wake up scanner
+                } else if (eftposCents === 0) {
+                    playBeep('error'); // Cannot submit $0.00
+                }
+            }
+        }
+
+
+        // ==========================================
+        // NFC MODULE (Shared)
+        // ==========================================
+
+        async function startNFC() {
+            if (!("NDEFReader" in window)) {
+                // If desktop/no NFC, allow simulated scan below via triggerDeviceSuccess
+                return;
+            }
+
+            if (nfcScannerActive) return; // Already running
+
+            try {
+                if (!ndefReader) ndefReader = new NDEFReader();
+                
+                if (currentDevice === 'transit') transitLcdText.innerHTML = "INIT NFC...<br>PLEASE WAIT";
+
+                await ndefReader.scan(); 
+                nfcScannerActive = true;
+                
+                // Transit beeps on hardware startup. EFTPOS does not (it just flashes the screen prompt).
+                if(currentDevice === 'transit') playBeep('transit-success');
+                updateUIForCurrentState();
+
+                ndefReader.onreading = ({ serialNumber }) => { triggerDeviceSuccess(serialNumber); };
+                ndefReader.onreadingerror = () => { triggerDeviceError("BAD READ"); };
+
+            } catch (error) {
+                if (error.name === 'NotAllowedError') triggerDeviceError("PERMISSION DENIED");
+                else triggerDeviceError("SYS FAIL");
+            }
+        }
+
+        function triggerDeviceSuccess(data) {
+            let displayId = data ? data.replace(/:/g, '') : 'UNKNOWN';
+            if (navigator.vibrate) navigator.vibrate(50);
+
+            if (currentDevice === 'transit') {
+                playBeep('transit-success');
+                transitLedGreen.classList.add('on');
+                setTimeout(() => transitLedGreen.classList.remove('on'), 1500);
+                
+                if (displayId.length > 14) displayId = displayId.substring(0, 11) + '...';
+                transitLcdText.innerHTML = `ACCEPTED [NFC]<br>${displayId}`;
+                scheduleReset(2500);
+                
+            } else if (currentDevice === 'eftpos') {
+                if (eftposState !== 'SCANNING') return; // Ignore random NFC taps if not ready
+                
+                eftposState = 'PROCESSING';
+                eftposDisplayStatus.innerText = "PROCESSING...";
+                eftposDisplayAmount.innerText = "";
+                eftposCasing.classList.remove('scanning');
+                
+                // Simulate network delay
+                setTimeout(() => {
+                    playBeep('eftpos-success');
+                    eftposState = 'RESULT';
+                    eftposDisplayStatus.innerText = "APPROVED";
+                    eftposDisplayAmount.innerText = formatMoney(eftposCents);
+                    
+                    setTimeout(() => {
+                        if (currentDevice === 'eftpos') {
+                            eftposState = 'IDLE';
+                            eftposCents = 0;
+                            updateEftposScreen();
+                        }
+                    }, 3000); // Back to $0.00 after 3 seconds
+                }, 1200);
+            }
+        }
+
+        function triggerDeviceError(msg) {
+            playBeep('error');
+            if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+            if (currentDevice === 'transit') {
+                transitLedRed.classList.add('on');
+                setTimeout(() => transitLedRed.classList.remove('on'), 2000);
+                transitLcdText.innerHTML = `SCAN ERROR<br>${msg}`;
+                scheduleReset(3000);
+            } else if (currentDevice === 'eftpos') {
+                if (eftposState !== 'SCANNING') return;
+                eftposState = 'RESULT';
+                eftposCasing.classList.remove('scanning');
+                eftposDisplayStatus.innerText = "DECLINED";
+                eftposDisplayAmount.innerText = "ERROR";
+                
+                setTimeout(() => {
+                    if (currentDevice === 'eftpos') {
+                        eftposState = 'IDLE';
+                        eftposCents = 0;
+                        updateEftposScreen();
+                    }
+                }, 3000);
+            }
+        }
+
+        function scheduleReset(delay) {
+            clearTimeout(resetTimeout);
+            resetTimeout = setTimeout(() => { updateUIForCurrentState(); }, delay);
+        }
+
+
+        // ==========================================
+        // BARCODE MODULE (Transit Only)
+        // ==========================================
+
+        function startBarcodeScanner() {
+            transitLcdText.innerHTML = "INIT CAMERA...<br>PLEASE WAIT";
+            transitBtnBarcode.style.display = 'none';
+            readerDiv.style.display = 'block';
+            html5QrCode = new Html5Qrcode("reader");
+
+            html5QrCode.start(
+                { facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 130 } },
+                (decodedText) => {
+                    if (currentDevice === 'transit') {
+                        playBeep('transit-success');
+                        if (navigator.vibrate) navigator.vibrate(50);
+                        transitLedGreen.classList.add('on');
+                        setTimeout(() => transitLedGreen.classList.remove('on'), 1500);
+                        
+                        let displayId = decodedText ? decodedText.replace(/:/g, '') : 'UNKNOWN';
+                        if (displayId.length > 14) displayId = displayId.substring(0, 11) + '...';
+                        transitLcdText.innerHTML = `ACCEPTED [OPT]<br>${displayId}`;
+                        scheduleReset(2500);
+                    }
+                    html5QrCode.pause(true);
+                    setTimeout(() => {
+                        if(html5QrCode && html5QrCode.getState() === 2) { 
+                            html5QrCode.resume();
+                            updateUIForCurrentState();
+                        }
+                    }, 2500);
+                },
+                (errorMessage) => { /* ignore */ }
+            ).then(() => {
+                barcodeScannerActive = true;
+                transitBtnStop.style.display = 'flex';
+                playBeep('transit-success');
+                transitLedGreen.classList.add('on');
+                setTimeout(() => transitLedGreen.classList.remove('on'), 300);
+                updateUIForCurrentState();
+            }).catch((err) => {
+                triggerDeviceError("CAM SYS FAIL");
+                resetBarcodeUI();
+            });
+        }
+
+        function stopBarcodeScanner() {
+            if (html5QrCode && barcodeScannerActive) {
+                transitLcdText.innerHTML = "POWERING DOWN<br>OPTICS...";
+                html5QrCode.stop().then(() => { html5QrCode.clear(); resetBarcodeUI(); }).catch(() => { resetBarcodeUI(); });
+            }
+        }
+
+        function resetBarcodeUI() {
+            barcodeScannerActive = false;
+            transitBtnBarcode.style.display = 'flex';
+            readerDiv.style.display = 'none';
+            transitBtnStop.style.display = 'none';
+            updateUIForCurrentState();
+        }
+
+
+        // ==========================================
+        // EVENT LISTENERS
+        // ==========================================
+
+        const handleManualSimulate = (e) => {
+            if (e.type === 'touchstart') e.preventDefault();
+            initAudio();
+            if (currentDevice === 'transit') {
+                if (!nfcScannerActive) startNFC();
+                else triggerDeviceSuccess('TEST-MANUAL'); // Desktop simulation
+            } else if (currentDevice === 'eftpos') {
+                if (eftposState === 'SCANNING') triggerDeviceSuccess('TEST-MANUAL');
+            }
+        };
+
+        // Transit Interactions
+        transitScanPad.addEventListener('mousedown', handleManualSimulate);
+        transitScanPad.addEventListener('touchstart', handleManualSimulate, { passive: false });
+
+        transitBtnBarcode.addEventListener('mousedown', (e) => { if (e.type === 'touchstart') e.preventDefault(); initAudio(); startBarcodeScanner(); });
+        transitBtnBarcode.addEventListener('touchstart', (e) => { e.preventDefault(); initAudio(); startBarcodeScanner(); }, { passive: false });
+        transitBtnStop.addEventListener('mousedown', (e) => { if (e.type === 'touchstart') e.preventDefault(); stopBarcodeScanner(); });
+        transitBtnStop.addEventListener('touchstart', (e) => { e.preventDefault(); stopBarcodeScanner(); }, { passive: false });
+
+        // EFTPOS Screen/NFC Simulation Zone
+        eftposNfcZone.addEventListener('mousedown', handleManualSimulate);
+        eftposNfcZone.addEventListener('touchstart', handleManualSimulate, { passive: false });
+        eftposScreenZone.addEventListener('mousedown', handleManualSimulate);
+        eftposScreenZone.addEventListener('touchstart', handleManualSimulate, { passive: false });
+
+        // EFTPOS Keypad Binding
+        eftposKeys.forEach(btn => {
+            const key = btn.getAttribute('data-key');
+            const handleKeypress = (e) => {
+                if (e.type === 'touchstart') e.preventDefault();
+                handleEftposKey(key);
+            };
+            btn.addEventListener('mousedown', handleKeypress);
+            btn.addEventListener('touchstart', handleKeypress, { passive: false });
+        });
+
+    </script>
+</body>
+</html>
